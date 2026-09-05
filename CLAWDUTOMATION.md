@@ -4,7 +4,8 @@ Financial automation harness: Solana first; Robinhood + perps/stocks on the road
 
 ## Layout
 - Automaton: src/ constitution/ onchainai-automation-0.1.1.tgz
-- bots/ooda/ — OODA from clawdbot-go (paper default)
+- bots/ooda/ — Canonical OODA synced from clawdbot-go-main/ooda (paper default; includes clawd-decision.ts)
+- ooda/ (repo root) — Evolved Fly/web/Docker variant; not replaced by sync. Prefer bots/ooda as sole source-of-truth for clawdbot-go OODA.
 - vendors/solana-chat/ — nanochat + Solana/perps
 - vendors/strategy/ — grid runner ta twap
 - packages/clawd-ws/ — observe-only tape

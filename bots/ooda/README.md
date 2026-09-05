@@ -24,11 +24,6 @@ npx tsx ooda/loop.ts --ticks 200 --sleep 0.4 --tui | npx tsx ooda/tui.ts
 npx tsx ooda/loop.ts --goblin --ticks 100 --llm
 ```
 
-For the Go runtime identity seed, run `gobot onboard` or
-`gobot dna generate` from the repo root. That writes
-`~/.gobot/workspace/agent-dna.json`, which is the starter agent DNA profile
-used by the Go CLI, doctor checks, and web console.
-
 ## Architecture
 
 ```text
@@ -36,11 +31,11 @@ ooda/
 ├── loop.ts          ← main harness (CLI entry point)
 ├── observe.ts       ← market data adapters (synth + Helius/Pyth stub)
 ├── state.ts         ← position book, PnL accounting, type definitions
-├── validate.ts      ← safety validator (enforces GOBOT.md rules)
-├── gobot-decision.ts← AI decision function (multi-provider LLM chain)
+├── validate.ts      ← safety validator (enforces CLAWD.md rules)
+├── clawd-decision.ts← AI decision function (multi-provider LLM chain)
 ├── journal.ts       ← append-only tick journal writer/reader
 ├── tui.ts           ← ANSI TUI dashboard (reads JSONL from loop.ts --tui)
-├── GOBOT.md         ← per-tick system prompt + config frontmatter
+├── CLAWD.md         ← per-tick system prompt + config frontmatter
 ├── goblin.md        ← GOBLIN MODE variant config
 └── journal/
     └── ticks.jsonl  ← append-only operational state
@@ -52,8 +47,8 @@ ooda/
 
 The orchestrator. Runs the OODA cycle for N ticks:
 
-1. **Observe** — calls `SynthObserver.tick()` (or Helius/Pyth when wired), optionally fetches a perps OI signal from `../perps/gobot-agents-perps/`
-2. **Orient/Decide** — calls `gobotDecision()` (LLM) or `deterministicDecision()` (SMA crossover) or `signalToDecision()` (perps OI)
+1. **Observe** — calls `SynthObserver.tick()` (or Helius/Pyth when wired), optionally fetches a perps OI signal from `../perps/clawd-agents-perps/`
+2. **Orient/Decide** — calls `clawdDecision()` (LLM) or `deterministicDecision()` (SMA crossover) or `signalToDecision()` (perps OI)
 3. **Validate** — passes raw decision through `validate()` before applying
 4. **Act** — `openPosition` / `closePosition` / hold
 5. **Journal** — appends every tick to `journal/ticks.jsonl`
@@ -73,7 +68,7 @@ The orchestrator. Runs the OODA cycle for N ticks:
 | `--perps-oi-mock` | false | Use mock data for OI signal |
 | `--commit-every N` | 0 | Git-commit journal every N ticks |
 
-**Kill-switch:** exits with code `1` after `loss_killswitch_consecutive` consecutive losing trades. Configurable in `GOBOT.md` frontmatter.
+**Kill-switch:** exits with code `1` after `loss_killswitch_consecutive` consecutive losing trades. Configurable in `CLAWD.md` frontmatter.
 
 ---
 
@@ -117,13 +112,13 @@ Called on every raw LLM or deterministic output before any state mutation. Inval
 - v0: one position at a time (rejects `open` when a position is already open)
 - `close.position_id` must exist in the book
 
-**`parseGoBotConfig(markdownContent)`** — extracts the YAML frontmatter from `GOBOT.md` / `goblin.md` and validates that `mode=paper` and `network=devnet`.
+**`parseClawdConfig(markdownContent)`** — extracts the YAML frontmatter from `CLAWD.md` / `goblin.md` and validates that `mode=paper` and `network=devnet`.
 
 ---
 
-### `gobot-decision.ts` — AI Decision
+### `clawd-decision.ts` — AI Decision
 
-Assembles the per-tick prompt from `GOBOT.md` + live observations and calls an LLM. Returns one parsed JSON decision.
+Assembles the per-tick prompt from `CLAWD.md` + live observations and calls an LLM. Returns one parsed JSON decision.
 
 **Provider priority (uses first key found):**
 
@@ -189,9 +184,9 @@ npx tsx ooda/loop.ts --ticks 200 --sleep 0.4 --tui | npx tsx ooda/tui.ts
 
 ---
 
-### `GOBOT.md` — Per-Tick Prompt
+### `CLAWD.md` — Per-Tick Prompt
 
-Config frontmatter + system prompt loaded by `loop.ts` each run (and by `gobot-decision.ts` each tick).
+Config frontmatter + system prompt loaded by `loop.ts` each run (and by `clawd-decision.ts` each tick).
 
 **Frontmatter keys:**
 
@@ -220,7 +215,7 @@ tick_sleep_ms: 0
 model: grok-4.3-fast
 ```
 
-Activated with `--goblin`. Loads `goblin.md` instead of `GOBOT.md`, forces `--llm`, sets sleep to 0ms, and defaults to 100 ticks. Same safety contract (paper + devnet), but maximally aggressive strategy:
+Activated with `--goblin`. Loads `goblin.md` instead of `CLAWD.md`, forces `--llm`, sets sleep to 0ms, and defaults to 100 ticks. Same safety contract (paper + devnet), but maximally aggressive strategy:
 
 - Aggressive mean reversion on 3-tick windows
 - Momentum continuation on 2+ same-direction ticks
@@ -245,15 +240,15 @@ All enforced in code — not just prompt guidance:
 
 | Variable | Used by | Description |
 | --- | --- | --- |
-| `XAI_API_KEY` | gobot-decision | Grok API key (priority 1) |
-| `XAI_MODEL` | gobot-decision | Override Grok model |
-| `DEEPSEEK_API_KEY` | gobot-decision | DeepSeek key (priority 2) |
-| `DEEPSEEK_BASE_URL` | gobot-decision | DeepSeek base URL |
-| `ZKROUTER_API_KEY` | gobot-decision | Preferred GoBot router key on the public zk.x402.wtf stack (priority 3) |
-| `ZKROUTER_BASE_URL` | gobot-decision | Override the default router base (`https://clawdrouter-zk.fly.dev/v1`) |
-| `OPENROUTER_API_KEY` | gobot-decision | Compatibility fallback for the same OpenAI-format router slot |
-| `OPENROUTER_MODEL` | gobot-decision | Override the router model |
-| `ANTHROPIC_API_KEY` | gobot-decision | Claude key (priority 4) |
-| `ANTHROPIC_MODEL` | gobot-decision | Override Claude model |
+| `XAI_API_KEY` | clawd-decision | Grok API key (priority 1) |
+| `XAI_MODEL` | clawd-decision | Override Grok model |
+| `DEEPSEEK_API_KEY` | clawd-decision | DeepSeek key (priority 2) |
+| `DEEPSEEK_BASE_URL` | clawd-decision | DeepSeek base URL |
+| `ZKROUTER_API_KEY` | clawd-decision | Preferred Clawd router key on the public zk.x402.wtf stack (priority 3) |
+| `ZKROUTER_BASE_URL` | clawd-decision | Override the default router base (`https://clawdrouter-zk.fly.dev/v1`) |
+| `OPENROUTER_API_KEY` | clawd-decision | Compatibility fallback for the same OpenAI-format router slot |
+| `OPENROUTER_MODEL` | clawd-decision | Override the router model |
+| `ANTHROPIC_API_KEY` | clawd-decision | Claude key (priority 4) |
+| `ANTHROPIC_MODEL` | clawd-decision | Override Claude model |
 | `SOLANA_RPC_URL` | loop | RPC URL (mainnet URLs rejected) |
 | `MAINNET_OK` | observe | Set to `1` to bypass mainnet guard |
