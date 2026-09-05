@@ -1,0 +1,123 @@
+{
+  "name": "@onchainai/automation",
+  "version": "0.1.2",
+  "description": "Clawd Automaton — sovereign AI agent runtime (local shell + OpenRouter + own packages)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./config.js": {
+      "types": "./dist/config.d.ts",
+      "default": "./dist/config.js"
+    },
+    "./state/database.js": {
+      "types": "./dist/state/database.d.ts",
+      "default": "./dist/state/database.js"
+    }
+  },
+  "bin": {
+    "automaton": "dist/index.js",
+    "clawd-automaton": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "src/services",
+    "src/agents",
+    "src/providers",
+    "src/cli",
+    "src/config",
+    "src/knowledge",
+    "src/index.js",
+    "constitution",
+    "CONSTITUTION.md",
+    "CLAWD.md",
+    "IDENTITY.md",
+    "SOUL.md",
+    "six-laws.md",
+    "program.md",
+    "lobster-council",
+    "data/hedge",
+    "ooda",
+    "web",
+    "zk-primitives/MANIFEST.json",
+    "zk-primitives/client/package.json",
+    "zk-primitives/agent/package.json",
+    "zk-primitives/zk.md",
+    "zk-primitives/docs",
+    "scripts/automaton.sh",
+    "scripts/crustacean-automation.sh",
+    "scripts/clawd-rules.txt",
+    "scripts/verify-pack.mjs",
+    "constitution.md",
+    "packages/cli/package.json",
+    "LICENSE",
+    "README.md",
+    "package.json"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Solizardking/clawd-automation.git"
+  },
+  "homepage": "https://x402.wtf",
+  "keywords": [
+    "autonomous-agent",
+    "sovereign-ai",
+    "web4",
+    "clawd",
+    "self-replicating"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc && node scripts/postbuild-bin.mjs",
+    "build:cli": "npm run build --prefix packages/cli",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "pack:check": "npm pack --dry-run",
+    "pack:local": "npm run build && npm pack && cp -f onchainai-automation-${npm_package_version}.tgz clawd-automaton-${npm_package_version}.tgz",
+    "smoke": "node dist/index.js --version && node dist/index.js --help && node -e \"import('./dist/interop/cjs-bridge.js').then(m=>console.log(JSON.stringify(m.getCjsHealth(),null,2))).catch(e=>{console.error(e);process.exit(1)})\" && node -e \"import('./dist/zk/primitives.js').then(m=>console.log(JSON.stringify(m.getZkHealth(),null,2))).catch(e=>{console.error(e);process.exit(1)})\" && node -e \"import('./dist/ooda/bridge.js').then(async m=>{const h=m.getOodaHealth();if(!h.ok){console.error(h);process.exit(1)};const r=await m.runPaperTicks({ticks:3,seed:1});if(!r.ok){console.error(r);process.exit(1)};console.log(JSON.stringify({health:h,paper:r.final},null,2))}).catch(e=>{console.error(e);process.exit(1)})\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
+    "@google/genai": "^2.16.0",
+    "@solana/web3.js": "^1.98.4",
+    "axios": "^1.19.0",
+    "better-sqlite3": "^11.0.0",
+    "chalk": "^5.3.0",
+    "cron-parser": "^4.9.0",
+    "dotenv": "^17.4.2",
+    "gray-matter": "^4.0.3",
+    "openai": "^7.4.0",
+    "ora": "^8.0.0",
+    "simple-git": "^3.24.0",
+    "siwe": "^2.3.0",
+    "ulid": "^2.3.0",
+    "viem": "^2.44.2",
+    "yaml": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.9.3",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
+  }
+}

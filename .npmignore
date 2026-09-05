@@ -1,0 +1,47 @@
+# Applied after package.json "files" allowlist.
+# Note: when "files" includes a whole directory (e.g. dist/), nested ignores
+# are more reliable via dist/.npmignore (written by postbuild-bin.mjs).
+
+# Tests / coverage
+**/__tests__/
+**/*.test.js
+**/*.test.ts
+**/*.test.d.ts
+**/*.test.js.map
+**/*.test.d.ts.map
+coverage/
+
+# Source maps (also mirrored in dist/.npmignore)
+*.map
+**/*.map
+**/*.js.map
+**/*.d.ts.map
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Artifacts / VCS / install junk
+*.tgz
+.DS_Store
+node_modules/
+.git/
+.pack-evidence/
+*.log
+
+# Nested workspaces / harness local state (ooda ships sources only)
+ooda/node_modules/**
+ooda/**/node_modules/**
+ooda/journal/**
+ooda/journal/ticks.jsonl
+ooda/package-lock.json
+**/package-lock.json
+# Rust kit is monorepo-only (not the npm runtime payload)
+agent/**
+.npmignore.test
+vitest.config.ts
+tsconfig.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+package-lock.json

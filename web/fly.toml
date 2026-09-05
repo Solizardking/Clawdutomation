@@ -1,0 +1,33 @@
+# fly.toml app configuration file generated for web-weathered-harborlight-8257 on 2026-08-10T11:01:46-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'web-weathered-harborlight-8257'
+primary_region = 'ewr'
+
+[build]
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+# web/server.mjs communicates with ooda/ (spawns loop.ts, tails journal, serves
+# /api/*) and proxies /api/agent/* to the Rust kit (agent/) when configured.
+# Set the agent-bridge secret here and on the kit app, then:
+#   fly secrets set AGENT_BRIDGE_KEY=... AGENT_KIT_URL=https://<kit-app>.fly.dev
+# Live-trade proxy target (ooda/web/server.ts) is optional via OODA_LIVE_PORT.
+[env]
+  OODA_AUTORUN = "1"
+  OODA_TICKS = "100"
+  OODA_SLEEP = "5"
+  OODA_SEED = "42"
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024
