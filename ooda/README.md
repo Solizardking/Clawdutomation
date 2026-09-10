@@ -32,7 +32,43 @@ npx tsx ooda/loop.ts --ticks 200 --sleep 0.4 --tui | npx tsx ooda/tui.ts
 npx tsx ooda/loop.ts --goblin --ticks 100 --llm
 ```
 
-## Web dashboard + 24/7 Fly deploy
+## Self-host (process or container)
+
+The HTTP runtime is `web/server.ts` (`npm run web`). It does **not** require Fly.io.
+
+```bash
+cd ooda
+npm install
+npm run web
+# paper dashboard:     http://127.0.0.1:4173/
+# live / automation:   http://127.0.0.1:4173/trade.html
+```
+
+Bind for a VM / LAN / Docker:
+
+```bash
+OODA_WEB_HOST=0.0.0.0 OODA_WEB_PORT=4173 npm run web
+```
+
+Configurable Solana JSON-RPC (`SOLANA_RPC_URL` first, then Helius, then public mainnet-beta) is reported on `GET /api/status`, `GET /api/live/status`, and `GET /api/agent/status` as `rpc` / `rpcSource`. Live wallet balance and signature confirmation (`/api/live/balance`, `/api/live/confirm`) use that same URL. Paper OODA children spawned by `POST /api/run` always get `https://api.devnet.solana.com` and never inherit `MAINNET_OK`.
+
+The server never accepts, stores, or signs with a user private key. Phantom (or any Wallet Standard provider) signs in the browser.
+
+```bash
+# Optional: point live routes at your RPC
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com npm run web
+
+# Optional: proxy a separately running OpenClawd kit (fail-closed if unset)
+AGENT_KIT_URL=http://127.0.0.1:6969 AGENT_BRIDGE_KEY=... npm run web
+
+# Docker self-host image (same entry as npm run web)
+docker build -t ooda .
+docker run --rm -p 4173:4173 \
+  -e SOLANA_RPC_URL=https://api.mainnet-beta.solana.com \
+  ooda
+```
+
+## Web dashboard
 
 A zero-dependency browser dashboard lives at `ooda/web/`:
 
@@ -44,11 +80,11 @@ OODA_WEB_PORT=4321 npx tsx web/server.ts
 **Pages**
 
 - `/` — paper dashboard: live price chart, stat cards, positions table, tick feed, run form (ticks/sleep/seed, goblin + LLM toggles), SSE-driven. Tails `journal/ticks.jsonl` for ANY run (including ones started from the CLI in another terminal).
-- `/trade.html` — live (mainnet) trading page: connect a Phantom wallet, get DFlow quotes/unsigned txs via `/api/live/*`, sign & send in the wallet. The server never holds a private key — only proxies quotes/confirmation (Helius fallback RPC).
+- `/trade.html` — live (mainnet) trading page: connect / disconnect a Phantom wallet, show address + SOL balance via `/api/live/balance`, get DFlow quotes/unsigned txs via `/api/live/*`, sign & send in the wallet. The server never holds a private key — only proxies quotes/confirmation through the selected Solana JSON-RPC (`SOLANA_RPC_URL` first).
 
 **Endpoints**: `GET /api/status`, `GET /api/config`, `GET /api/journal?n=`, `GET /api/stream` (SSE), `POST /api/run`, `POST /api/stop`, `GET /api/live/status`, `GET /api/live/order`, `GET /api/live/balance`, `GET /api/live/confirm`, `GET /api/agent/status`, `POST /api/agent/act`.
 
-**24/7 deployment (Fly.io)** — runs the paper loop forever with a persistent journal:
+**24/7 deployment (optional Fly.io)** — same image; not required for self-host. Runs the paper loop forever with a persistent journal:
 
 ```bash
 cd ooda

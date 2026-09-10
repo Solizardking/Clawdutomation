@@ -9,11 +9,13 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { handleAgentKitRoute } from '../web/agent-kit.js';
+import { handleLiveRoute } from '../web/live.js';
 import {
   AUTOMATION_TARGET_MINT,
   PAPER_SOLANA_RPC_URL,
   paperLoopEnv,
   rpcSource,
+  rpcStatusFields,
   solanaRpcUrl,
 } from '../web/rpc.js';
 import { parseClawdConfig } from '../validate.js';
@@ -51,6 +53,90 @@ function startProxyServer() {
   return listen(server);
 }
 
+function startLiveServer() {
+  const server = createServer((req, res) => {
+    const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+    void handleLiveRoute(res, url).then((handled) => {
+      if (!handled) {
+        res.writeHead(404);
+        res.end('not found');
+      }
+    });
+  });
+  return listen(server);
+}
+
+interface JsonRpcCall {
+  method?: string;
+  params?: unknown;
+}
+
+/** Local fake Solana JSON-RPC: known getBalance + getSignatureStatuses. */
+function startFakeSolanaRpc(opts: {
+  lamports: number;
+  confirmationStatus: string;
+  slot: number;
+}) {
+  const calls: JsonRpcCall[] = [];
+  const server = createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c: Buffer) => {
+      raw += c.toString('utf8');
+    });
+    req.on('end', () => {
+      let body: { id?: unknown; method?: string; params?: unknown } = {};
+      try {
+        body = JSON.parse(raw) as typeof body;
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid json' }));
+        return;
+      }
+      calls.push({ method: body.method, params: body.params });
+      if (body.method === 'getBalance') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: body.id ?? 1,
+            result: { context: { slot: opts.slot }, value: opts.lamports },
+          }),
+        );
+        return;
+      }
+      if (body.method === 'getSignatureStatuses') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: body.id ?? 1,
+            result: {
+              context: { slot: opts.slot },
+              value: [
+                {
+                  confirmationStatus: opts.confirmationStatus,
+                  err: null,
+                  slot: opts.slot,
+                },
+              ],
+            },
+          }),
+        );
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: body.id ?? 1,
+          error: { code: -32601, message: `unknown method ${body.method}` },
+        }),
+      );
+    });
+  });
+  return listen(server).then((bound) => ({ ...bound, calls }));
+}
+
 describe('solanaRpcUrl helper', { concurrency: false }, () => {
   const keys = ['SOLANA_RPC_URL', 'HELIUS_RPC_URL', 'HELIUS_API_KEY'] as const;
   const saved: Record<string, string | undefined> = {};
@@ -82,6 +168,16 @@ describe('solanaRpcUrl helper', { concurrency: false }, () => {
     process.env['HELIUS_RPC_URL'] = helius;
     assert.equal(solanaRpcUrl(), helius);
     assert.equal(rpcSource(), 'HELIUS_RPC_URL');
+  });
+
+  it('rpcStatusFields reports the env-selected RPC, not a hardcoded URL', () => {
+    const injected = `http://127.0.0.1:9${String(Date.now()).slice(-4)}/status-fields`;
+    const fields = rpcStatusFields({
+      SOLANA_RPC_URL: injected,
+    });
+    assert.equal(fields.rpc, injected);
+    assert.equal(fields.rpcSource, 'SOLANA_RPC_URL');
+    assert.equal(fields.targetMint, AUTOMATION_TARGET_MINT);
   });
 });
 
@@ -207,6 +303,159 @@ describe('handleAgentKitRoute', { concurrency: false }, () => {
       await proxy.close();
       if (prevRpc === undefined) delete process.env['SOLANA_RPC_URL'];
       else process.env['SOLANA_RPC_URL'] = prevRpc;
+    }
+  });
+});
+
+describe('handleLiveRoute against local fake JSON-RPC', { concurrency: false }, () => {
+  const keys = ['SOLANA_RPC_URL', 'HELIUS_RPC_URL', 'HELIUS_API_KEY'] as const;
+  const saved: Record<string, string | undefined> = {};
+
+  before(() => {
+    for (const k of keys) saved[k] = process.env[k];
+  });
+
+  after(() => {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it('GET /api/live/balance drives shipped handler at SOLANA_RPC_URL getBalance', async () => {
+    const knownLamports = 987_654_321;
+    const fake = await startFakeSolanaRpc({
+      lamports: knownLamports,
+      confirmationStatus: 'confirmed',
+      slot: 11,
+    });
+    process.env['SOLANA_RPC_URL'] = fake.base;
+    delete process.env['HELIUS_RPC_URL'];
+    delete process.env['HELIUS_API_KEY'];
+    const live = await startLiveServer();
+    const pubkey = `oodaLiveBal${Date.now()}Pubkey`;
+    try {
+      assert.equal(solanaRpcUrl(), fake.base);
+      const res = await fetch(
+        `${live.base}/api/live/balance?pubkey=${encodeURIComponent(pubkey)}`,
+      );
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { pubkey?: string; lamports?: number };
+      assert.equal(body.pubkey, pubkey);
+      assert.equal(body.lamports, knownLamports);
+      assert.equal(fake.calls.length, 1);
+      assert.equal(fake.calls[0]?.method, 'getBalance');
+      assert.deepEqual(fake.calls[0]?.params, [pubkey]);
+    } finally {
+      await live.close();
+      await fake.close();
+    }
+  });
+
+  it('GET /api/live/confirm drives shipped handler at SOLANA_RPC_URL getSignatureStatuses', async () => {
+    const knownStatus = 'finalized';
+    const knownSlot = 42_424_242;
+    const fake = await startFakeSolanaRpc({
+      lamports: 1,
+      confirmationStatus: knownStatus,
+      slot: knownSlot,
+    });
+    process.env['SOLANA_RPC_URL'] = fake.base;
+    delete process.env['HELIUS_RPC_URL'];
+    delete process.env['HELIUS_API_KEY'];
+    const live = await startLiveServer();
+    const signature = `oodaLiveConfirm${Date.now()}Sig`;
+    try {
+      assert.equal(solanaRpcUrl(), process.env['SOLANA_RPC_URL']);
+      const res = await fetch(
+        `${live.base}/api/live/confirm?signature=${encodeURIComponent(signature)}`,
+      );
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as {
+        signature?: string;
+        found?: boolean;
+        confirmationStatus?: string | null;
+        err?: unknown;
+        slot?: number | null;
+      };
+      assert.equal(body.signature, signature);
+      assert.equal(body.found, true);
+      assert.equal(body.confirmationStatus, knownStatus);
+      assert.equal(body.err, null);
+      assert.equal(body.slot, knownSlot);
+      assert.equal(fake.calls[0]?.method, 'getSignatureStatuses');
+      const params = fake.calls[0]?.params as [string[], { searchTransactionHistory?: boolean }];
+      assert.deepEqual(params[0], [signature]);
+      assert.equal(params[1]?.searchTransactionHistory, true);
+    } finally {
+      await live.close();
+      await fake.close();
+    }
+  });
+
+  it('GET /api/live/status reports env-selected rpc/rpcSource', async () => {
+    const injected = `http://127.0.0.1:9${String(Date.now()).slice(-4)}/live-status-rpc`;
+    process.env['SOLANA_RPC_URL'] = injected;
+    delete process.env['HELIUS_RPC_URL'];
+    delete process.env['HELIUS_API_KEY'];
+    const live = await startLiveServer();
+    try {
+      const res = await fetch(`${live.base}/api/live/status`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { rpc?: string; rpcSource?: string };
+      assert.equal(body.rpc, process.env['SOLANA_RPC_URL']);
+      assert.equal(body.rpcSource, 'SOLANA_RPC_URL');
+    } finally {
+      await live.close();
+    }
+  });
+
+  it('balance/confirm reject missing query params', async () => {
+    const live = await startLiveServer();
+    try {
+      const bal = await fetch(`${live.base}/api/live/balance`);
+      assert.equal(bal.status, 400);
+      const conf = await fetch(`${live.base}/api/live/confirm`);
+      assert.equal(conf.status, 400);
+    } finally {
+      await live.close();
+    }
+  });
+});
+
+describe('wallet page + paper-loop spawn isolation', () => {
+  it('trade.html exposes connect/disconnect and address + SOL balance', () => {
+    const html = readFileSync(join(ROOT, 'web/public/trade.html'), 'utf8');
+    assert.match(html, /id="btn-connect"/);
+    assert.match(html, /id="btn-disconnect"/);
+    assert.match(html, /Connect Phantom/);
+    assert.match(html, />Disconnect</);
+    assert.match(html, /id="wallet-address"/);
+    assert.match(html, /id="wallet-balance"/);
+    assert.match(html, /SOL balance/);
+  });
+
+  it('trade.js fetches balance/confirm through /api/live/* and never handles a private key', () => {
+    const js = readFileSync(join(ROOT, 'web/public/trade.js'), 'utf8');
+    assert.match(js, /\/api\/live\/balance\?pubkey=/);
+    assert.match(js, /\/api\/live\/confirm\?signature=/);
+    assert.match(js, /\/api\/live\/status/);
+    assert.match(js, /function connectWallet/);
+    assert.match(js, /function disconnectWallet/);
+    assert.match(js, /function refreshBalance/);
+    assert.doesNotMatch(js, /privateKey|secretKey|SOLANA_PRIVATE_KEY/);
+  });
+
+  it('server spawns paper children via paperLoopEnv and does not accept a user private key', () => {
+    const server = readFileSync(join(ROOT, 'web/server.ts'), 'utf8');
+    const live = readFileSync(join(ROOT, 'web/live.ts'), 'utf8');
+    const agent = readFileSync(join(ROOT, 'web/agent-kit.ts'), 'utf8');
+    assert.match(server, /env:\s*paperLoopEnv\(\)/);
+    assert.match(server, /handleLiveRoute/);
+    assert.match(server, /handleAgentKitRoute/);
+    for (const src of [server, live, agent]) {
+      assert.doesNotMatch(src, /searchParams\.get\(['"]private/i);
+      assert.doesNotMatch(src, /parsed\.privateKey|body\.secretKey/);
     }
   });
 });

@@ -19,14 +19,16 @@
  * (/api/agent/*). Paper loop children are spawned with paperLoopEnv() so a
  * mainnet automation RPC never leaks into loop.ts.
  *
- * Binds to localhost by default.
+ * Binds to 127.0.0.1 by default (local self-host). Containers/Fly set
+ * OODA_WEB_HOST=0.0.0.0 (also the default when PORT is injected).
  *
  * Usage:
  *   npx tsx web/server.ts
  *   OODA_WEB_PORT=4321 npx tsx web/server.ts
+ *   OODA_WEB_HOST=0.0.0.0 npx tsx web/server.ts   # LAN / container
  *
- * Fly.io 24/7 mode (see Dockerfile / fly.toml):
- *   OODA_WEB_HOST=0.0.0.0 (default when PORT is set by Fly)
+ * 24/7 container mode (see Dockerfile):
+ *   OODA_WEB_HOST=0.0.0.0 (Dockerfile default; also used when PORT is set)
  *   OODA_AUTORUN=1        continuously rerun loop.ts forever
  *   OODA_TICKS / OODA_SLEEP / OODA_SEED / OODA_LLM / OODA_GOBLIN
  *   OODA_JOURNAL_PATH=... persistent journal path (Fly volume)
@@ -50,7 +52,9 @@ const OODA_DIR = join(__dirname, '..');
 const PUBLIC_DIR = join(__dirname, 'public');
 // Fly injects PORT; OODA_WEB_PORT wins when set explicitly.
 const PORT = parseInt(process.env['OODA_WEB_PORT'] ?? process.env['PORT'] ?? '4173', 10);
-const HOST = process.env['OODA_WEB_HOST'] ?? '0.0.0.0';
+const HOST =
+  process.env['OODA_WEB_HOST'] ??
+  (process.env['PORT'] ? '0.0.0.0' : '127.0.0.1');
 
 // ─── 24/7 autorun daemon mode (Fly) ─────────────────────────────────────────
 const AUTORUN = process.env['OODA_AUTORUN'] === '1';

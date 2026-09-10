@@ -14,8 +14,8 @@
  * secret (AGENT_BRIDGE_KEY) that this server reads from its own env — the
  * same secret the kit operator configured — so only trusted callers reach
  * the kit's signer-backed endpoint. If AGENT_KIT_URL / AGENT_BRIDGE_KEY are
- * unset, every route below reports unconfigured/502 rather than silently
- * doing nothing.
+ * unset, status reports `{ configured: false }` and POST /api/agent/act
+ * returns 503 rather than silently doing nothing.
  */
 
 import type { ServerResponse } from 'node:http';

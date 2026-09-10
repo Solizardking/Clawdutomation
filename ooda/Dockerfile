@@ -1,11 +1,14 @@
 # ────────────────────────────────────────────────────────────────────────────
-# ooda — Clawd OODA harness + dashboard, 24/7 on Fly.io
+# ooda — self-hosted Clawd OODA runtime (dashboard + paper loop + live RPC)
 #
-# Requires (on the host):
-#   fly launch --copy-config --no-deploy   (first time only)
-#   fly volumes create ooda_journal --size 1 --region iad
-#   fly secrets set SOLANA_RPC_URL=... OPENAI_API_KEY=... (optional)
-#   fly deploy
+# Local / VM:
+#   docker build -t ooda .
+#   docker run --rm -p 4173:4173 \
+#     -e SOLANA_RPC_URL=https://api.mainnet-beta.solana.com \
+#     -e OODA_JOURNAL_PATH=/data/journal/ticks.jsonl \
+#     ooda
+#
+# Optional Fly.io: see fly.toml (volumes + secrets). Not required to self-host.
 # ────────────────────────────────────────────────────────────────────────────
 
 FROM node:22-alpine
